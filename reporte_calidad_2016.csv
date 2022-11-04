@@ -1,0 +1,16 @@
+,column_name,type,n_nans,n_nulls
+0,order_id,int64,0,0
+1,date,object,2353,2353
+2,time,object,2038,2038
+3,order_details_id,int64,0,0
+4,order_id,int64,0,0
+5,pizza_id,object,5673,5673
+6,quantity,object,4726,4726
+7,pizza_id,object,0,0
+8,pizza_type_id,object,0,0
+9,size,object,0,0
+10,price,float64,0,0
+11,pizza_type_id,object,0,0
+12,name,object,0,0
+13,category,object,0,0
+14,ingredients,object,0,0
