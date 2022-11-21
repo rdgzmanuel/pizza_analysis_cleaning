@@ -35,10 +35,10 @@ def obtain_prices(df_pizzas):
     """
     DataFrame containing the price of each pizza
     """
-    return  df_pizzas.groupby("pizza_type_id").sum()/3
+    return df_pizzas.groupby("pizza_type_id").sum()/3
 
 
-def create_weekly_pizzas(df_orders, df_order_details, df_prices):
+def create_weekly_pizzas(df_orders, df_order_details, df_prices, pizza_ingredients):
     """
     Create a new DataFrame representing the number of pizzas sold each
     week of 2015. This information helps us to compute the optimal number
@@ -79,13 +79,14 @@ def create_weekly_pizzas(df_orders, df_order_details, df_prices):
             df_weekly_pizzas.loc[index, f"week {int(count / 7) + 1}"] += quantity
             j += 1
         i += 1
-    df_weekly_pizzas["mean"] = df_weekly_pizzas.iloc[:,1:52].sum(axis=1)/51
+    df_weekly_pizzas["mean"] = df_weekly_pizzas.iloc[:, 1:52].sum(axis=1)/51
     # We add up to 51 weeks because the last one isn't complete
     df_weekly_pizzas["optimal"] = 0
     values = range(-8, 0)   # Deviations from the mean.
     for i in range(df_weekly_pizzas.shape[0]):
-        profits = {}   
-        # A dicitonary in which keys are possible deviations form the mean (-8 to +3) and values are profit for each deviation
+        profits = {}
+        # A dicitonary in which keys are possible deviations form the mean (-8 to +3)
+        # and values are profit for each deviation
         for value in values:
             profits[value] = 0
             mean = int(df_weekly_pizzas.loc[i, "mean"]) + value
@@ -94,12 +95,12 @@ def create_weekly_pizzas(df_orders, df_order_details, df_prices):
                 if difference < 0:
                     profits[value] -= abs(difference)*df_prices.loc[df_weekly_pizzas.iloc[i, 0], "price"] * 0.15
                     # Supposing we have a 15% profit for each sold pizza
-                elif difference > 0: 
+                elif difference > 0:
                     profits[value] -= abs(difference)*df_prices.loc[df_weekly_pizzas.iloc[i, 0], "price"] * 0.85
                     # Because you spent a 85% of the final price but didn't sell it
         # Maximum profit and optimal deviations from the mean (will be updated in the second loop
-        maximum = -100000   
-        optimal = 0    
+        maximum = -100000
+        optimal = 0
         for key, profit in profits.items():
             if maximum != max(maximum, profit):
                 maximum, optimal = profit, key
@@ -135,7 +136,7 @@ def show_strategy(optimal_ingredients):
 
 def create_csv(optimal_ingredients):
     """
-    Create a new dictionary to transform our data into 
+    Create a new dictionary to transform our data into
     a DataFrame so it can be displayes as a csv
     """
     ingredients = {"Ingredients": [], "Quantity": []}
@@ -169,15 +170,25 @@ def recognize_format_date(str_date):
             return "%b %d %Y"
 
 
+def recognize_format_time(str_time):
+    if type(str_time) == float:
+        return "0"
+    else:
+        if ":" in str_time:
+            if str_time[-1].isdigit():
+                return "%H:%M:%S"
+            elif str_time[-2] == "A":
+                return "%H:%M AM"
+            else:
+                return "%H:%M PM"
+        else:
+            return "%HH %MM %SS"
+
+
 def clean_orders(df_orders):
-    """
-    Using the python module datetime to transform any time format
-    into a standard easier to work with. In the first loop all the values are
-    transformed except NaNs and strings of numbers, which are transformed afterwards.
-    As we don't use the time of the order, tthat column is not modified.
-    """
     for i in range(df_orders.shape[0]):
         date_format = recognize_format_date(df_orders.iloc[i, 1])
+        time_format = recognize_format_time(df_orders.iloc[i, 2])
         if ":" in date_format:
             new_date = str(dt.datetime.strptime(df_orders.iloc[i, 1], date_format)).split()[0]
             date = new_date
@@ -191,24 +202,38 @@ def clean_orders(df_orders):
                 except:
                     df_orders.iloc[i, 1] = str(df_orders.iloc[i, 1])[:4] + "0" + str(df_orders.iloc[i, 1])[4:]
                     new_date = str(dt.datetime.strptime(f"{df_orders.iloc[i, 1]}", f"{date_format}")).split()
-                
                 date = new_date[0]
-                # We can make a little modification to have the same
-                # format as the previous dataset, so that the same functions
-                # can be applied.
                 date = date[8:] + "/" + date[5:7] + "/" + date[:4]
                 df_orders.iloc[i, 1] = date
-    
+        if time_format not in ["%H:%M:%S", "0", "1"]:
+            hour = df_orders.iloc[i, 2]
+            if "A" in time_format or "P" in time_format:
+                hour = df_orders.iloc[i, 2]
+                if "A" in time_format or int(hour[:2]) >= 12:
+                    new_hour = hour[0:5] + ":" + "00"
+                else:
+                    new_hour = str(int(hour[0:2]) + 12) + ":" + hour[4:5] + ":" + "00"
+            else:
+                new_hour = hour[0:2] + ":" + hour[4:6] + ":" + hour[8:10]
+            df_orders.iloc[i, 2] = new_hour
     for j in range(5):
-        # We check five times to ensure there is no Nan left
         for i in range(df_orders.shape[0]):
             date_format = recognize_format_date(df_orders.iloc[i, 1])
+            time_format = recognize_format_time(df_orders.iloc[i, 2])
+            if time_format == "0":
+                df_orders.iloc[i, 2] = df_orders.iloc[i - 1, 2]
             if date_format == "0":
                 df_orders.iloc[i, 1] = df_orders.iloc[i - 1, 1]
-                date_format = recognize_format_date(df_orders.iloc[i - 1, 1])
             elif date_format == "1":
                 df_orders.iloc[i, 1] = df_orders.iloc[i + 1, 1]
-                date_format = recognize_format_date(df_orders.iloc[i + 1, 1])
+
+    # To get rid of the orders from which we don't know the hour but we
+    # know the time, we replicate the time of the previous order, avoiding
+    # possible mistakes of other methods. We just say that there were two
+    # orders at the same time.
+    for i in range(df_orders.shape[0]):
+        if df_orders.iloc[i, 2] == "00:00:00":
+            df_orders.iloc[i, 2] = df_orders.iloc[i - 1, 2]
     return df_orders
 
 
@@ -248,14 +273,14 @@ def create_informe(dfs):
             informe["n_nans"].append(df[column].isna().sum())
             informe["n_nulls"].append(df[column].isnull().sum())
         for i in range(df.shape[1]):
-            ty = str(df.dtypes[i])            
+            ty = str(df.dtypes[i])
             informe["type"].append(ty)
     df = pd.DataFrame(informe)
     df.to_csv("reporte_calidad_2016.csv")
 
 
 if __name__ == "__main__":
-    df_order_details = pd.read_csv("order_details.csv", sep = ";", encoding="latin1")
+    df_order_details = pd.read_csv("order_details.csv", sep=";", encoding="latin1")
     df_orders = pd.read_csv("orders.csv", sep=";")
     df_pizzas = pd.read_csv("pizzas.csv")
     df_pizza_types = pd.read_csv("pizza_types.csv", encoding="latin1")
@@ -275,7 +300,7 @@ if __name__ == "__main__":
     df_prices = obtain_prices(df_pizzas)
     df_orders = clean_orders(df_orders)
     df_order_details = clean_order_details(pizza_ingredients, df_order_details)
-    df_weekly_pizzas = create_weekly_pizzas(df_orders, df_order_details, df_prices)
+    df_weekly_pizzas = create_weekly_pizzas(df_orders, df_order_details, df_prices, pizza_ingredients)
 
     optimal_ingredients = obtain_optimal(df_weekly_pizzas, pizza_ingredients, ingredients)
 
